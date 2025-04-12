@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from typing import Any, Iterable, List, Tuple
+from typing import Any, Iterable, List, Tuple, Callable
+from collections import deque, defaultdict
 
 from typing_extensions import Protocol
 
@@ -7,7 +8,9 @@ from typing_extensions import Protocol
 # Central Difference calculation
 
 
-def central_difference(f: Any, *vals: Any, arg: int = 0, epsilon: float = 1e-6) -> Any:
+def central_difference(
+    f: Callable[[Any], float], *vals: Any, arg: int = 0, epsilon: float = 1e-6
+) -> float:
     r"""
     Computes an approximation to the derivative of `f` with respect to one arg.
 
@@ -22,7 +25,12 @@ def central_difference(f: Any, *vals: Any, arg: int = 0, epsilon: float = 1e-6) 
     Returns:
         An approximation of $f'_i(x_0, \ldots, x_{n-1})$
     """
-    raise NotImplementedError("Need to include this file from past assignment.")
+    assert arg < len(vals), "arg must be less than the number of vals"
+
+    modified_vals = list(vals)
+    modified_vals[arg] = modified_vals[arg] + epsilon
+
+    return (f(*modified_vals) - f(*vals)) / epsilon
 
 
 variable_count = 1
@@ -60,7 +68,33 @@ def topological_sort(variable: Variable) -> Iterable[Variable]:
     Returns:
         Non-constant Variables in topological order starting from the right.
     """
-    raise NotImplementedError("Need to include this file from past assignment.")
+    in_degree = defaultdict(int)
+    search_interface = [variable]
+    while search_interface:
+        new_search_interface = []
+        for var in search_interface:
+            if var.is_constant() or var.is_leaf():
+                continue
+            for parent in var.parents:
+                if parent.unique_id not in in_degree:
+                    new_search_interface.append(parent)
+                in_degree[parent.unique_id] += 1
+        search_interface = new_search_interface
+
+    result = []
+    queue = deque([variable])
+    while queue:
+        current = queue.popleft()
+        if current.is_constant():
+            continue
+
+        result.append(current)
+        for parent in current.parents:
+            in_degree[parent.unique_id] -= 1
+            if in_degree[parent.unique_id] == 0:
+                queue.append(parent)
+
+    yield from result
 
 
 def backpropagate(variable: Variable, deriv: Any) -> None:
@@ -74,7 +108,17 @@ def backpropagate(variable: Variable, deriv: Any) -> None:
 
     No return. Should write to its results to the derivative values of each leaf through `accumulate_derivative`.
     """
-    raise NotImplementedError("Need to include this file from past assignment.")
+    grad_dict = {variable.unique_id: deriv}
+
+    for var in topological_sort(variable):
+        if var.is_leaf():
+            var.accumulate_derivative(grad_dict[var.unique_id])
+            continue
+
+        for parent, parent_deriv in var.chain_rule(grad_dict[var.unique_id]):
+            if parent.unique_id not in grad_dict:
+                grad_dict[parent.unique_id] = parent_deriv.zeros()
+            grad_dict[parent.unique_id] += parent_deriv
 
 
 @dataclass
